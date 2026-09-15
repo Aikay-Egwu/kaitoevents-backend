@@ -57,7 +57,7 @@ Route::prefix('public')->group(function () {
 // Admin routes (require authentication)
 //Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('admin')->group(function () {
 Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
-    RoutesHelper::includeRouteFiles(base_path('routes/paths'));
+    RoutesHelper::includeRouteFiles(base_path('routes/paths')); 
     // Dashboard routes
     Route::prefix('dashboard')->group(function () {
         Route::get('/stats', [DashboardController::class, 'getStats']);

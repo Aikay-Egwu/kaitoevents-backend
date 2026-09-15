@@ -13,22 +13,22 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UsersController;
 
-Route::prefix('users')->group(function () {
+Route::prefix('sent')->group(function () {
     // List all users
     Route::get('/', [UsersController::class, 'index']);
 
     // Create new user (type forced to 'Admin') 
-    Route::post('/', [UsersController::class, 'store']);
+    Route::post('/', [UsersController::class, 'send']);
 
     // Get single user
-    Route::get('/{id}', [UsersController::class, 'show']);
+    //Route::get('/{id}', [UsersController::class, 'show']);
 
     // Update user (name, email, type)
-    Route::put('/{id}', [UsersController::class, 'update']);
+    //Route::put('/{id}', [UsersController::class, 'update']);
 
     // Delete user
-    Route::delete('/{id}', [UsersController::class, 'destroy']);
+    //Route::delete('/{id}', [UsersController::class, 'destroy']);
 
     // Change user password
-    Route::post('/{id}/change-password', [UsersController::class, 'changePassword']);
+    //Route::post('/{id}/change-password', [UsersController::class, 'changePassword']);
 });
