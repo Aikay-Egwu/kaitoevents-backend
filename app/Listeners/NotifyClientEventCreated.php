@@ -41,7 +41,7 @@ class NotifyClientEventCreated
         ]);
 
         //send to admin
-        $emailBuilder->sendEmail([
+        /* $emailBuilder->sendEmail([
             'subject' => 'New Consultation Request - ' . $event->client['eventType'],
             "senderEmail" => "do_not_reply@kaitoevents.co.uk",
             "senderName" => "Kaito Events",
@@ -56,8 +56,8 @@ class NotifyClientEventCreated
                     'name' => "Event Team"
                 ]
             ]
-        ]);
-        $emailBuilder->sendEmail([
+        ]); */
+        /* $emailBuilder->sendEmail([
             'subject' => 'New Consultation Request - ' . $event->client['eventType'],
             "senderEmail" => "do_not_reply@kaitoevents.co.uk",
             "senderName" => "Kaito Events",
@@ -72,6 +72,6 @@ class NotifyClientEventCreated
                     'name' => "Event Team"
                 ]
             ]
-        ]);
+        ]); */
     }
 }

@@ -180,9 +180,28 @@ class CreateEventRequest extends AppRequest
             $this->merge(['client_phone' => $phone]);
         }
 
-        // Ensure budget is properly formatted (both new and legacy)
-        if ($this->has('budget') && $this->budget !== null) {
-            $this->merge(['budget' => round((float) $this->budget, 2)]);
+        // Ensure budget is properly formatted (both new and legacy).
+        // The frontend submits a single numeric budget value like "15000" or
+        // "5,000". We still tolerate legacy range strings such as
+        // "£5,000 - £8,000" by extracting the largest embedded number and
+        // treating it as the budget value before the numeric validation rule
+        // runs, so the routing service gets a meaningful float.
+        if ($this->has('budget') && $this->budget !== null && $this->budget !== '') {
+            $raw = $this->budget;
+            $parsed = 0.0;
+            if (is_numeric($raw)) {
+                $parsed = (float) $raw;
+            } else {
+                $matches = [];
+                preg_match_all('/\d[\d,]*\.?\d*/', (string) $raw, $matches);
+                if (!empty($matches[0])) {
+                    $numbers = array_map(static function ($token) {
+                        return (float) str_replace(',', '', $token);
+                    }, $matches[0]);
+                    $parsed = max($numbers);
+                }
+            }
+            $this->merge(['budget' => round($parsed, 2)]);
         }
 
         // Map new fields to legacy fields for backward compatibility

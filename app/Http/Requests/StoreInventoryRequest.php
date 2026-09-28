@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreInventoryRequest extends FormRequest
 {
@@ -16,6 +17,7 @@ class StoreInventoryRequest extends FormRequest
         return [
             // Required core fields
             'name'                     => ['required', 'string', 'max:255'],
+            'slug'                     => ['nullable', 'string', 'max:240', Rule::unique('inventories', 'slug')],
             'inventory_category_id'    => ['required', 'integer', 'exists:inventory_categories,id'],
             'price'                    => ['required', 'numeric', 'min:0', 'max:99999999.99'],
 
@@ -25,6 +27,12 @@ class StoreInventoryRequest extends FormRequest
             'condition'                => ['nullable', 'in:excellent_good,fair_wear,needs_repair,retired_written_off'],
             'color'                    => ['nullable', 'string', 'max:100'],
             'description'              => ['nullable', 'string', 'max:1000'],
+            'tagline'                  => ['nullable', 'string'],
+            'shop_price'               => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
+            'for_shop'                 => ['boolean'],
+            'suitable_for_guests_min'  => ['nullable', 'integer', 'min:0', 'max:999999'],
+            'suitable_for_guests_max'  => ['nullable', 'integer', 'min:0', 'max:999999'],
+            'suitable_for_guests_label' => ['nullable', 'string', 'max:80'],
 
             // Financial
             'cost_price'               => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],

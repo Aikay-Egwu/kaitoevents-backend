@@ -2,19 +2,32 @@
 
 namespace App\Models;
 
-use App\Models\Booking;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
-class Client extends Model
+class Client extends Authenticatable
 {
-    use HasFactory;
+    use HasApiTokens, HasFactory, Notifiable;
 
     protected $fillable = [
         'firstname',
         'lastname',
         'email',
         'phone',
+        'password',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'password' => 'hashed',
     ];
 
     protected $appends = ['name'];
@@ -24,28 +37,28 @@ class Client extends Model
         return trim($this->firstname . ' ' . $this->lastname);
     }
 
-    public function events()
+    public function events(): HasMany
     {
         return $this->hasMany(Event::class);
     }
 
-    public function feedbacks()
+    public function feedbacks(): HasMany
     {
         return $this->hasMany(Feedback::class);
     }
 
-    public function bookings()
+    public function bookings(): HasMany
     {
         return $this->hasMany(Booking::class, 'customer_id');
     }
 
-    public function isAdmin()
+    public function shopBasket(): HasOne
     {
-        return $this->role === 'admin';
+        return $this->hasOne(ShopClientBasket::class)->where('status', 'open');
     }
 
-    public function isCustomer()
+    public function orders(): HasMany
     {
-        return $this->role === 'customer';
+        return $this->hasMany(ShopOrder::class);
     }
 }

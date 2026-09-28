@@ -93,6 +93,17 @@ class InventoryFactory extends Factory
     }
 
     /**
+     * Indicate that the item is published to the shop with a retail price.
+     */
+    public function forShop(?float $shopPrice = null): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'for_shop'   => true,
+            'shop_price' => $shopPrice ?? $this->faker->randomFloat(2, 20, 1200),
+        ]);
+    }
+
+    /**
      * Indicate that the inventory item is well stocked.
      */
     public function wellStocked(): static

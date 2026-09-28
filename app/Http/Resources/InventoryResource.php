@@ -14,6 +14,7 @@ class InventoryResource extends JsonResource
             'id'                   => $this->id,
             'asset_id'             => $this->asset_id,
             'name'                 => $this->name,
+            'slug'                 => $this->slug,
 
             // Classification
             'inventory_category_id' => $this->inventory_category_id,
@@ -46,6 +47,12 @@ class InventoryResource extends JsonResource
 
             // Descriptive
             'description'          => $this->description,
+            'tagline'              => $this->tagline,
+            'shop_price'           => $this->shop_price,
+            'for_shop'             => $this->for_shop,
+            'suitable_for_guests_min' => $this->suitable_for_guests_min,
+            'suitable_for_guests_max' => $this->suitable_for_guests_max,
+            'suitable_for_guests_label' => $this->suitable_for_guests_label,
             'color'                => $this->color,
             'supplier'             => $this->supplier,
             'notes'                => $this->notes,
@@ -95,6 +102,20 @@ class InventoryResource extends JsonResource
 
             'repair_logs'          => $this->whenLoaded('repairLogs', function () {
                 return RepairMaintenanceLogResource::collection($this->repairLogs->sortByDesc('date_logged')->values());
+            }),
+
+            // Shop gallery — only emitted if the `images` relation was eager-loaded
+            // (prevents accidental N+1 on listings that don't need thumbnails).
+            'images' => $this->whenLoaded('images', function () {
+                return $this->images->map(function ($img) {
+                    return [
+                        'id'         => (int) $img->id,
+                        'url'        => $img->url,
+                        'alt'        => $img->alt_text,
+                        'is_primary' => (bool) $img->is_primary,
+                        'sort_order' => (int) $img->sort_order,
+                    ];
+                })->values();
             }),
 
             'usage_statistics'     => $this->when($request->has('include_stats'), function () {

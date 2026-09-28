@@ -19,6 +19,10 @@ class UpdateInventoryRequest extends FormRequest
         return [
             // Required core fields — sent on every edit (with sane fallbacks from existing record)
             'name'                     => ['filled', 'required', 'string', 'max:255'],
+            'slug'                     => [
+                'nullable', 'string', 'max:240',
+                Rule::unique('inventories', 'slug')->ignore($inventoryId),
+            ],
             'inventory_category_id'    => ['filled', 'required', 'integer', 'exists:inventory_categories,id'],
             'price'                    => ['filled', 'required', 'numeric', 'min:0', 'max:99999999.99'],
             'quantity_available'       => ['filled', 'required', 'integer', 'min:0', 'max:99999'],
@@ -32,6 +36,12 @@ class UpdateInventoryRequest extends FormRequest
             'condition'                => ['nullable', 'in:excellent_good,fair_wear,needs_repair,retired_written_off'],
             'color'                    => ['nullable', 'string', 'max:100'],
             'description'              => ['nullable', 'string', 'max:1000'],
+            'tagline'                  => ['nullable', 'string'],
+            'shop_price'               => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
+            'for_shop'                 => ['boolean'],
+            'suitable_for_guests_min'  => ['nullable', 'integer', 'min:0', 'max:999999'],
+            'suitable_for_guests_max'  => ['nullable', 'integer', 'min:0', 'max:999999'],
+            'suitable_for_guests_label' => ['nullable', 'string', 'max:80'],
 
             // Financial (nullable numeric — "" sent by frontend, normalized to null)
             'cost_price'               => ['nullable', 'numeric', 'min:0', 'max:99999999.99'],
@@ -94,8 +104,8 @@ class UpdateInventoryRequest extends FormRequest
         //    Frontend always sends the key with "" when cleared; convert that
         //    to null so nullable DB columns are properly nulled.
         $stringNullable = [
-            'asset_id', 'unit', 'condition', 'color', 'description',
-            'location_name', 'location_zone', 'location', 'supplier',
+            'asset_id', 'slug', 'unit', 'condition', 'color', 'description',
+            'tagline', 'suitable_for_guests_label', 'location_name', 'location_zone', 'location', 'supplier',
             'notes',
         ];
         foreach ($stringNullable as $k) {
@@ -107,6 +117,7 @@ class UpdateInventoryRequest extends FormRequest
         // 2) Numeric nullables: '' → null, but keep actual zero/numbers.
         $numericNullable = [
             'cost_price', 'unit_replacement_cost', 'current_value',
+            'shop_price', 'suitable_for_guests_min', 'suitable_for_guests_max',
             'total_revenue_generated', 'break_even_events', 'profit_deficit',
         ];
         foreach ($numericNullable as $k) {
@@ -128,6 +139,12 @@ class UpdateInventoryRequest extends FormRequest
             $v = $this->input('is_active');
             if (is_string($v)) {
                 $merged['is_active'] = in_array($v, ['1', 'true', 'on', 'yes'], true);
+            }
+        }
+        if ($this->has('for_shop')) {
+            $v = $this->input('for_shop');
+            if (is_string($v)) {
+                $merged['for_shop'] = in_array($v, ['1', 'true', 'on', 'yes'], true);
             }
         }
 

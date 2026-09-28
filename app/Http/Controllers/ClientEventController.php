@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Events\ClientEventCreated;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CreateEventRequest;
 use App\Http\Resources\EventResource;
+use App\Mail\ConsultationConfirmationMail;
 use App\Models\Client;
 use App\Models\Event;
 use App\Models\EventType;
@@ -15,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 
 class ClientEventController extends Controller
@@ -39,7 +41,7 @@ class ClientEventController extends Controller
                 ]
             );
 
-            return response()->json($client);
+            //return response()->json($client);
             // Handle client creation or retrieval
             $client = $this->handleClientData($validatedData);
             $validatedData['client_id'] = $client->id;
@@ -58,8 +60,11 @@ class ClientEventController extends Controller
 
             // Send confirmation email (if configured)
             $this->sendEventConfirmationEmail($event);
-
+            Log::info('Event request created successfully:', $event->toArray());
+            // Fire the event request created
+            //ClientEventCreated::dispatch($event);
             return response()->json([
+                'client' => $event,
                 'success' => true,
                 'data' => new EventResource($event),
                 'message' => 'Event request submitted successfully! We will contact you within 24 hours to confirm details.',
@@ -70,9 +75,9 @@ class ClientEventController extends Controller
                     'Once confirmed, we will begin planning your event',
                 ],
                 'contact_info' => [
-                    'phone' => config('app.contact_phone', '(555) 123-4567'),
-                    'email' => config('app.contact_email', 'events@company.com'),
-                    'business_hours' => 'Monday - Friday: 9:00 AM - 6:00 PM',
+                    'phone' => config('app.contact_phone', '01915659575'),
+                    'email' => config('app.contact_email', 'chioma@kaitoevents.co.uk'),
+                    'business_hours' => 'Monday - Friday: 9:00 AM - 4:00 PM',
                 ],
                 'reference_number' => $this->generateReferenceNumber($event),
             ], 201);
@@ -156,8 +161,8 @@ class ClientEventController extends Controller
             'timeline' => $this->getEventTimeline($event),
             'next_steps' => $this->getNextSteps($event),
             'contact_info' => [
-                'phone' => config('app.contact_phone', '(555) 123-4567'),
-                'email' => config('app.contact_email', 'events@company.com'),
+                'phone' => config('app.contact_phone', '01915659575'),
+                'email' => config('app.contact_email', 'chioma@kaitoevents.co.ukpany.com'),
                 'business_hours' => 'Monday - Friday: 9:00 AM - 6:00 PM',
             ],
         ]);
@@ -185,79 +190,7 @@ class ClientEventController extends Controller
         ]);
     }
 
-    /**
-     * Submit a consultation request.
-     */
-    public function requestConsultation(CreateEventRequest $request, EmailService $emailService): JsonResponse
-    {
-        try {
-            // Create or find client
-            $client = Client::firstOrCreate(
-                ['email' => $request->email],
-                [
-                    'firstname' => $request->firstName,
-                    'lastname' => $request->lastName,
-                    'phone' => $request->phone,
-                ]
-            );
 
-            // Store consultation request (you might want to create a ConsultationRequest model)
-            $event = Event::create(array_merge(["client_id" => $client->id], $request->eventDetails()));
-            $venue = EventVenue::create(array_merge(["event_id" => $event->id], $request->getVenueData()));
-
-            // For now, we'll log this or send an email to admin
-            // In a full implementation, you'd store this in a consultation_requests table
-            $eventType = EventType::find($event->event_type_id);
-            // Send notification email to admin
-            ///$this->sendConsultationRequestEmail($client, $consultationData);
-          
-            $client = [
-                "id" => $client->id,
-                "firstName" => $request->firstName,
-                "lastName" => $request->lastName,
-                "phone" => $request->phone,
-                "email" => $request->email,
-                "eventDate" => $request->eventDate,
-                "guestCount" => $request->guestCount,
-                "startTime" => $request->startTime ?? "",
-                "eventType" => $eventType->title,
-                "hasVenue" => $request->hasVenue,
-                "venueName" => $request->venueName ?? '',
-                "venueAddress" => $request->venueAddreee ?? '',
-                "colorScheme" => $request->colorScheme ?? "",
-                "specialInstructions" => $request->specialInstructions ?? "",
-                "budget" => $request->budget,
-            ];
-
-            event(new ClientEventCreated($client));
-            //ClientEventCreated::dispatch($client);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Consultation request submitted successfully! We will contact you within 24 hours.',
-                'next_steps' => [
-                    'Our event planning team will review your request',
-                    'We will contact you within 24 hours using your preferred method',
-                    'We will schedule a consultation at your convenience',
-                    'During the consultation, we will discuss your vision and provide a detailed quote',
-                ],
-                'contact_info' => [
-                    'phone' => config('app.contact_phone', '(555) 123-4567'),
-                    'email' => config('app.contact_email', 'events@company.com'),
-                    'business_hours' => 'Monday - Friday: 9:00 AM - 6:00 PM',
-                ],
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => [
-                    'code' => 'CONSULTATION_REQUEST_FAILED',
-                    'message' => 'Failed to submit consultation request. Please try again.',
-                    'details' => config('app.debug') ? $e->getMessage() : null,
-                ],
-            ], 500);
-        }
-    }
 
     /**
      * Handle client data creation or retrieval.
@@ -420,7 +353,8 @@ class ClientEventController extends Controller
         // You would typically use Laravel's Mail facade with a Mailable class
 
         try {
-            // Mail::to($event->client->email)->send(new EventConfirmationMail($event));
+            Mail::to($event->client->email)
+                ->send(new ConsultationConfirmationMail($event));
         } catch (\Exception $e) {
             // Log email sending failure but don't fail the request
             Log::warning('Failed to send event confirmation email', [

@@ -30,7 +30,8 @@ class InventoryController extends Controller
     {
         // Always eager-load category (needed for category breadcrumbs / filters) and
         // lightweight counts (single COUNT subquery each — no N+1, no JOIN explosion).
-        $query = Inventory::with('category')
+        // 'images' is loaded so InventoryResource can emit thumbnail URLs for list rows.
+        $query = Inventory::with(['category', 'images'])
             ->withCount(['events', 'usageLogs', 'repairLogs']);
 
         // OPT-IN: Upcoming events collection + pivot. Alias `event_name` AS `name` so
@@ -82,6 +83,53 @@ class InventoryController extends Controller
                             ->orWhere('id', $parentId);
                     });
             });
+        }
+
+        // Filter by category name or slug (case-insensitive). Matches the category
+        // itself OR, when the match is a parent, all of its children — so clicking
+        // "View items" on a root row in the admin categories list returns the full
+        // subtree's inventory. Accepts a comma-separated list to mirror the
+        // existing `category_id` behavior.
+        if ($request->filled('category')) {
+            $tokens = array_filter(array_map('trim', explode(',', (string) $request->category)));
+            if ($tokens) {
+                $query->where(function ($q) use ($tokens) {
+                    $q->whereIn('inventory_category_id', function ($sub) use ($tokens) {
+                        $sub->select('id')
+                            ->from('inventory_categories')
+                            ->where(function ($w) use ($tokens) {
+                                foreach ($tokens as $t) {
+                                    $like = '%' . $t . '%';
+                                    $w->orWhere(function ($inner) use ($t, $like) {
+                                        $inner->whereRaw('LOWER(category_name) = ?', [mb_strtolower($t)])
+                                            ->orWhere('slug', $t)
+                                            ->orWhere('category_name', 'like', $like);
+                                    });
+                                }
+                            });
+                    })
+                        ->orWhereIn('inventory_category_id', function ($sub) use ($tokens) {
+                            // Children of any matched parent category are included too,
+                            // so a "Furniture" root click pulls all its sub-categories.
+                            $sub->select('id')
+                                ->from('inventory_categories')
+                                ->whereIn('parent_id', function ($p) use ($tokens) {
+                                    $p->select('id')
+                                        ->from('inventory_categories')
+                                        ->where(function ($w) use ($tokens) {
+                                            foreach ($tokens as $t) {
+                                                $like = '%' . $t . '%';
+                                                $w->orWhere(function ($inner) use ($t, $like) {
+                                                    $inner->whereRaw('LOWER(category_name) = ?', [mb_strtolower($t)])
+                                                        ->orWhere('slug', $t)
+                                                        ->orWhere('category_name', 'like', $like);
+                                                });
+                                            }
+                                        });
+                                });
+                        });
+                });
+            }
         }
 
         // Filter by normalized location fields (split name/zone or legacy combined)
@@ -250,7 +298,7 @@ class InventoryController extends Controller
     {
         try {
             $inventory = Inventory::create($request->validated());
-            $inventory->load(['category']);
+            $inventory->load(['category', 'images']);
 
             return response()->json([
                 'success' => true,
@@ -276,9 +324,9 @@ class InventoryController extends Controller
     public function show($id, Request $request): JsonResponse
     {
         try {
-            $eager = ['category', 'events', 'usageLogs', 'repairLogs'];
+            $eager = ['category', 'images', 'events', 'usageLogs', 'repairLogs'];
             if ($request->boolean('skip_logs')) {
-                $eager = ['category', 'events'];
+                $eager = ['category', 'images', 'events'];
             }
             $inventory = Inventory::with($eager)
                 ->withCount(['events', 'usageLogs', 'repairLogs'])
@@ -320,10 +368,17 @@ class InventoryController extends Controller
             $allowedKeys = [
                 'asset_id',
                 'name',
+                'slug',
                 'inventory_category_id',
                 'price',
                 'cost_price',
                 'description',
+                'tagline',
+                'shop_price',
+                'for_shop',
+                'suitable_for_guests_min',
+                'suitable_for_guests_max',
+                'suitable_for_guests_label',
                 'color',
                 'unit',
                 'condition',
@@ -352,16 +407,29 @@ class InventoryController extends Controller
             $inventory->fill($updatePayload);
             $dirtyAttributes = $inventory->getDirty();
 
-            // 2) Handle uploaded images if any were sent. TODO: wire these
-            //    into a real inventory_images relation. For now we acknowledge
-            //    them in the debug payload so we don't silently drop file data.
-            $imagesUploaded = count($request->file('images') ?? []);
+            // 2) Handle uploaded images if any were sent. Wire into the
+            //    existing ShopImageUploadService (Inventory.images() relation).
+            $uploadedFiles = $request->file('images');
+            if ($uploadedFiles !== null && !is_array($uploadedFiles)) {
+                $uploadedFiles = [$uploadedFiles]; // single file → normalize
+            }
+            $imagesUploaded = is_array($uploadedFiles) ? count($uploadedFiles) : 0;
+
+            if ($imagesUploaded > 0) {
+                /** @var \App\Services\ShopImageUploadService $imageService */
+                $imageService = app(\App\Services\ShopImageUploadService::class);
+                $nextSort = ($inventory->images()->max('sort_order') ?? 0) + 1;
+                foreach ($uploadedFiles as $file) {
+                    $imageService->uploadSingle($inventory, $file, $nextSort++, false);
+                }
+                $inventory->load('images');
+            }
 
             // 3) Nothing to update (every key either identical or not in payload).
             //    Return a clear "no-op" success instead of pretending we wrote.
             if (empty($dirtyAttributes) && $imagesUploaded === 0) {
                 DB::rollBack();
-                $inventory->load(['category']);
+                $inventory->load(['category', 'images']);
                 return response()->json([
                     'success' => true,
                     'data'    => new InventoryResource($inventory),
@@ -388,7 +456,9 @@ class InventoryController extends Controller
             //    fields we intended to change actually changed. Catches edge
             //    cases like accessor interference, cast mismatches, race
             //    conditions, or stale DB transactions.
-            $fresh = Inventory::with('category')->findOrFail($id);
+            //    Load images + category so InventoryResource emits gallery URLs
+            //    on the response, regardless of whether this request uploaded.
+            $fresh = Inventory::with(['category', 'images'])->findOrFail($id);
             $discrepancies = [];
             foreach (array_keys($dirtyAttributes) as $key) {
                 $expected = $inventory->getAttribute($key);
@@ -396,8 +466,12 @@ class InventoryController extends Controller
                 // Normalize decimal comparison (string "10.00" vs 10.00) to
                 // avoid false positives from PHP float/string casting via $casts.
                 $isDecimal = in_array($key, [
-                    'price', 'cost_price', 'unit_replacement_cost',
-                    'current_value', 'total_revenue_generated', 'profit_deficit',
+                    'price',
+                    'cost_price',
+                    'unit_replacement_cost',
+                    'current_value',
+                    'total_revenue_generated',
+                    'profit_deficit',
                 ], true);
                 if ($isDecimal) {
                     if (round((float)$expected, 2) !== round((float)$actual, 2)) {
@@ -660,7 +734,7 @@ class InventoryController extends Controller
     public function publicIndex(Request $request): JsonResponse
     {
 
-        $query = Inventory::with('category')
+        $query = Inventory::with(['category', 'images'])
             ->active()
             ->where('condition', '!=', 'retired_written_off');
 
@@ -693,7 +767,7 @@ class InventoryController extends Controller
     public function publicShow(string $id): JsonResponse
     {
         try {
-            $inventory = Inventory::with('category')
+            $inventory = Inventory::with(['category', 'images'])
                 ->active()
                 ->where('condition', '!=', 'retired_written_off')
                 ->findOrFail($id);
@@ -716,6 +790,7 @@ class InventoryController extends Controller
         foreach (
             [
                 'search',
+                'category',
                 'category_id',
                 'parent_category_id',
                 'location',

@@ -44,6 +44,8 @@ class InventoryCategoryController extends Controller
                     'category_name'         => $category->category_name,
                     'category_description'  => $category->category_description,
                     'category_image'        => $category->category_image,
+                    'slug'                  => $category->slug,
+                    'for_shop'              => $category->for_shop,
                     'depth'                 => $category->parent_id === null ? 0 : 1,
                     'inventory_count'       => $category->inventoryItems()->count(),
                     'created_at'            => $category->created_at?->format('Y-m-d H:i:s'),
@@ -66,6 +68,8 @@ class InventoryCategoryController extends Controller
                 'category_name'         => $root->category_name,
                 'category_description'  => $root->category_description,
                 'category_image'        => $root->category_image,
+                'slug'                  => $root->slug,
+                'for_shop'              => $root->for_shop,
                 'inventory_count'       => $root->total_inventory_count,
                 'children_count'        => $root->directChildren()->count(),
                 'created_at'            => $root->created_at?->format('Y-m-d H:i:s'),
@@ -80,6 +84,8 @@ class InventoryCategoryController extends Controller
                             'category_name'         => $child->category_name,
                             'category_description'  => $child->category_description,
                             'category_image'        => $child->category_image,
+                            'slug'                  => $child->slug,
+                            'for_shop'              => $child->for_shop,
                             'inventory_count'       => $child->inventoryItems()->count(),
                             'created_at'            => $child->created_at?->format('Y-m-d H:i:s'),
                             'updated_at'            => $child->updated_at?->format('Y-m-d H:i:s'),
@@ -110,6 +116,8 @@ class InventoryCategoryController extends Controller
             ],
             'category_description'   => ['nullable', 'string', 'max:1000'],
             'category_image'         => ['nullable', 'string', 'max:255'],
+            'slug'                   => ['nullable', 'string', 'max:160', Rule::unique('inventory_categories', 'slug')],
+            'for_shop'               => ['boolean'],
         ]);
 
         $category = InventoryCategory::create($validated);
@@ -170,6 +178,11 @@ class InventoryCategoryController extends Controller
             ],
             'category_description'   => ['sometimes', 'nullable', 'string', 'max:1000'],
             'category_image'         => ['sometimes', 'nullable', 'string', 'max:255'],
+            'slug'                   => [
+                'sometimes', 'nullable', 'string', 'max:160',
+                Rule::unique('inventory_categories', 'slug')->ignore($category->id),
+            ],
+            'for_shop'               => ['sometimes', 'boolean'],
         ]);
 
         // Prevent self as parent (infinite cycle)
@@ -238,6 +251,8 @@ class InventoryCategoryController extends Controller
             'category_name'         => $category->category_name,
             'category_description'  => $category->category_description,
             'category_image'        => $category->category_image,
+            'slug'                  => $category->slug,
+            'for_shop'              => $category->for_shop,
             'created_at'            => $category->created_at?->format('Y-m-d H:i:s'),
             'updated_at'            => $category->updated_at?->format('Y-m-d H:i:s'),
         ];

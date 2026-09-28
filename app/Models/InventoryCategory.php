@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Storage;
 
 class InventoryCategory extends Model
 {
@@ -17,6 +19,13 @@ class InventoryCategory extends Model
         'category_name',
         'category_description',
         'category_image',
+        // Shop-facing fields (added by 2026_09_22_000005_add_shop_fields_to_inventory_tables)
+        'slug',
+        'for_shop',
+    ];
+
+    protected $casts = [
+        'for_shop' => 'boolean',
     ];
 
     /**
@@ -91,5 +100,77 @@ class InventoryCategory extends Model
         }
 
         return $this->inventoryItems()->count();
+    }
+
+    // ---------------------------------------------------------------------
+    // Shop-facing surface — categories exposed in the shop via `for_shop`.
+    // ---------------------------------------------------------------------
+
+    /**
+     * Inventory items in this category that are published to the shop.
+     */
+    public function shopItems(): HasMany
+    {
+        return $this->hasMany(Inventory::class, 'inventory_category_id')
+                    ->where('for_shop', true);
+    }
+
+    /**
+     * Shop thumbnail URL — absolute string passthrough or Storage::url on the public disk.
+     */
+    public function getThumbnailUrlAttribute(): ?string
+    {
+        $path = $this->category_image;
+        if ($path === null || $path === '') {
+            return null;
+        }
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return $path;
+        }
+
+        /** @var FilesystemAdapter $disk */
+        $disk = Storage::disk('public');
+
+        return $disk->url($path);
+    }
+
+    /**
+     * Categories flagged for display in the shop.
+     */
+    public function scopeForShop($query)
+    {
+        return $query->where('for_shop', true);
+    }
+
+    /**
+     * Stable display order — parents first, then by name.
+     */
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('parent_id')->orderBy('category_name');
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (self $category) {
+            if (empty($category->slug)) {
+                $category->slug = self::generateUniqueSlug((string) $category->category_name);
+            }
+        });
+    }
+
+    public static function generateUniqueSlug(string $name, ?int $ignoreId = null): string
+    {
+        $base = \Illuminate\Support\Str::slug($name) ?: 'category';
+        $slug = $base;
+        $suffix = 2;
+
+        while (self::where('slug', $slug)
+            ->when($ignoreId !== null, fn ($q) => $q->where('id', '<>', $ignoreId))
+            ->exists()) {
+            $slug = $base . '-' . $suffix++;
+        }
+
+        return $slug;
     }
 }

@@ -4,8 +4,12 @@
 use App\Helpers\Routes\RoutesHelper;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\BookingItemController;
+use App\Http\Controllers\ClientAuthController;
+use App\Http\Controllers\ClientBasketController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientEventController;
+use App\Http\Controllers\ClientOrderController;
+use App\Http\Controllers\ConsultationRequestController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\EventImageController;
@@ -39,7 +43,7 @@ Route::post("admin/login", LoginController::class)->name("main.login");
 // Public routes (no authentication required)
 Route::prefix('public')->group(function () {
     // Client event creation
-    Route::post('/events', [ClientEventController::class, 'requestConsultation']);
+    Route::post('/events', [ConsultationRequestController::class, 'requestConsultation']);
     Route::get('/events/{event}', [ClientEventController::class, 'show']);
     Route::get('event_types', [EventTypeController::class, 'index']);
     Route::get('test_email', [TestController::class, 'testEmail']);
@@ -52,12 +56,42 @@ Route::prefix('public')->group(function () {
 
     // Client post-event feedback submission
     Route::post('/feedback', [FeedbackController::class, 'store']);
+
+    // Shop — public read-only endpoints.
+    // Loaded explicitly from routes/shop-public.php (deliberately NOT in routes/paths/,
+    // which RoutesHelper auto-loads inside the auth:sanctum admin group).
+    if (file_exists(base_path('routes/shop-public.php'))) {
+        require base_path('routes/shop-public.php');
+    }
+});
+
+// Client shop auth (public, throttled)
+Route::middleware('throttle:10,1')->prefix('client')->group(function () {
+    Route::post('/register', [ClientAuthController::class, 'register']);
+    Route::post('/login', [ClientAuthController::class, 'login']);
+});
+
+// Client shop authenticated routes (Sanctum resolves Client from tokenable_type)
+Route::middleware('auth:sanctum')->prefix('client')->group(function () {
+    Route::get('/me', [ClientAuthController::class, 'me']);
+    Route::post('/logout', [ClientAuthController::class, 'logout']);
+    Route::get('/basket', [ClientBasketController::class, 'show']);
+    Route::middleware('throttle:30,1')->group(function () {
+        Route::post('/basket/items', [ClientBasketController::class, 'addItem']);
+        Route::patch('/basket/items/{item}', [ClientBasketController::class, 'updateItem']);
+        Route::delete('/basket/items/{item}', [ClientBasketController::class, 'removeItem']);
+    });
+    Route::delete('/basket', [ClientBasketController::class, 'clear']);
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('/orders', [ClientOrderController::class, 'store']);
+    });
+    Route::get('/orders', [ClientOrderController::class, 'index']);
 });
 
 // Admin routes (require authentication)
 //Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('admin')->group(function () {
 Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
-    RoutesHelper::includeRouteFiles(base_path('routes/paths')); 
+    RoutesHelper::includeRouteFiles(base_path('routes/paths'));
     // Dashboard routes
     Route::prefix('dashboard')->group(function () {
         Route::get('/stats', [DashboardController::class, 'getStats']);
@@ -90,7 +124,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::get('/{inventory}/availability', [InventoryController::class, 'checkAvailability']);
     });
 
-    
+
     // Event Management
     Route::prefix('events')->group(function () {
         Route::get('/', [EventController::class, 'index']);
@@ -177,14 +211,14 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // User routes
     // Categories
     //Route::apiResource('prop-categories', PropCategoriesController::class);
-//
+    //
     //Route::apiResource('props', PropController::class);
     //Route::post('/props/{prop}/images', [PropController::class, 'uploadImages']);
     //Route::delete('/props/{prop}/images/{imageId}', [PropController::class, 'deleteImage']);
     //Route::patch('/props/{prop}/availability', [PropController::class, 'updateAvailability']);
     //Route::get('/props/category/{category}', [PropController::class, 'byCategory']);
     //Route::get('/props/search/{query}', [PropController::class, 'search']);
-//
+    //
     //Route::apiResource('bookings', BookingController::class);
     //Route::patch('/bookings/{booking}/status', [BookingController::class, 'updateStatus']);
     //Route::get('/bookings/calendar/{year}/{month}', [BookingController::class, 'calendar']);
@@ -218,4 +252,3 @@ Route::get('/health', function () {
         'environment' => app()->environment(),
     ]);
 });
-
